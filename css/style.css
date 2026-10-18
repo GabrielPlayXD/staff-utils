@@ -1,0 +1,21 @@
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #111827; }
+::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #4B5563; }
+
+html, body { height: 100%; }
+
+/* Barra lateral: deslizante no mobile */
+#sidebar { transition: transform .2s ease; }
+@media (max-width: 767px) {
+    #sidebar.closed { transform: translateX(-100%); }
+}
+
+.nav-item.active {
+    background-color: rgb(99 102 241 / 0.15);
+    border-color: rgb(99 102 241 / 0.4);
+    color: #fff;
+}
+
+.tool-card { transition: transform .15s ease, border-color .15s ease, background-color .15s ease; }
+.tool-card:hover { transform: translateY(-2px); border-color: #6366f1; background-color: #1f2937; }

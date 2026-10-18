@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Central de Ferramentas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="bg-gray-950 text-gray-300 font-sans overflow-hidden">
+
+    <div class="flex h-full">
+
+        <!-- Fundo escuro quando o menu abre no celular -->
+        <div id="backdrop" class="hidden fixed inset-0 bg-black/60 z-30 md:hidden"></div>
+
+        <!-- Barra lateral -->
+        <aside id="sidebar" class="closed fixed md:static inset-y-0 left-0 z-40 w-72 shrink-0 bg-gray-900 border-r border-gray-800 flex flex-col">
+            <a href="#/" class="flex items-center gap-2 px-5 py-4 border-b border-gray-800 hover:bg-gray-800/50 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 text-indigo-500" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M3 3h6v6H3V3zm8 0h6v6h-6V3zM3 11h6v6H3v-6zm8 0h6v6h-6v-6z" />
+                </svg>
+                <span class="text-white font-bold text-lg">Central de Ferramentas</span>
+            </a>
+
+            <div class="p-3">
+                <input type="text" id="navSearch" placeholder="Buscar ferramenta..." autocomplete="off"
+                    class="w-full bg-gray-950 border border-gray-700 rounded-lg py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-white outline-none transition">
+            </div>
+
+            <nav id="navList" class="flex-1 overflow-y-auto px-3 pb-3 space-y-1"></nav>
+
+            <div class="px-5 py-3 border-t border-gray-800 text-[11px] text-gray-600">
+                Para adicionar ou remover ferramentas, edite <code class="text-gray-500">js/tools.js</code>
+            </div>
+        </aside>
+
+        <!-- Conteúdo -->
+        <main class="flex-1 min-w-0 flex flex-col">
+
+            <!-- Barra superior (celular) -->
+            <div class="md:hidden flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800">
+                <button id="menuBtn" aria-label="Menu" class="text-gray-300 hover:text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+                </button>
+                <span class="text-white font-semibold">Central de Ferramentas</span>
+            </div>
+
+            <!-- Home -->
+            <section id="homeView" class="flex-1 overflow-y-auto p-4 md:p-8">
+                <div class="max-w-5xl mx-auto space-y-6">
+                    <header class="border-b border-gray-800 pb-4">
+                        <h1 class="text-2xl md:text-3xl font-bold text-white">Central de Ferramentas</h1>
+                        <p class="text-gray-500 mt-1 text-sm">Escolha uma ferramenta abaixo ou no menu lateral. <span id="toolCount" class="text-gray-600"></span></p>
+                    </header>
+                    <div id="toolGrid" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+                </div>
+            </section>
+
+            <!-- Ferramenta aberta -->
+            <section id="toolView" class="hidden flex-1 min-h-0 flex flex-col">
+                <div class="flex items-center justify-between gap-3 px-4 py-2 bg-gray-900 border-b border-gray-800">
+                    <h2 id="toolTitle" class="text-sm font-semibold text-white truncate"></h2>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <button id="toolReload" class="bg-gray-800 hover:bg-gray-700 text-white py-1.5 px-3 rounded-lg text-xs font-medium transition border border-gray-700">Recarregar</button>
+                        <a id="toolOpenNew" href="#" target="_blank" rel="noopener" class="bg-gray-800 hover:bg-gray-700 text-white py-1.5 px-3 rounded-lg text-xs font-medium transition border border-gray-700">Abrir em nova aba ↗</a>
+                    </div>
+                </div>
+                <div class="relative flex-1 min-h-0">
+                    <div id="frameLoading" class="absolute inset-0 flex items-center justify-center text-sm text-gray-500 italic pointer-events-none">Carregando...</div>
+                    <iframe id="toolFrame" title="Ferramenta" class="absolute inset-0 w-full h-full border-0 bg-gray-950"></iframe>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="js/tools.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

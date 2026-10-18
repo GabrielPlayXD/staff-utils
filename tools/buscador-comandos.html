@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buscador de Comandos - Logs do Minecraft</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #111827; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4B5563; }
+
+        tbody tr:hover { background-color: #1F2937; }
+        button:disabled { opacity: .45; cursor: not-allowed; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-300 min-h-screen p-4 md:p-6 font-sans">
+
+    <div class="max-w-screen-2xl mx-auto space-y-6">
+
+        <!-- Cabeçalho -->
+        <header class="border-b border-gray-800 pb-4">
+            <h1 class="text-2xl md:text-3xl font-bold text-white flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-indigo-500" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M2 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm3.293 1.293a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L7.586 10 5.293 7.707a1 1 0 010-1.414zM11 12a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd" />
+                </svg>
+                Buscador de Comandos
+            </h1>
+            <p class="text-gray-500 mt-1 text-sm">Logs do servidor Minecraft: veja quem usou cada comando (Ordem: mais recentes primeiro).</p>
+        </header>
+
+        <!-- Pasta de logs -->
+        <div class="bg-gray-900 p-5 rounded-xl border border-gray-800 space-y-4">
+            <div class="flex flex-col md:flex-row gap-3 md:items-end">
+                <div class="flex-1">
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Pasta de logs</label>
+                    <input type="text" id="folderField" readonly placeholder="Nenhuma pasta selecionada"
+                        class="w-full bg-gray-950 border border-gray-700 rounded-lg py-2 px-3 text-sm text-white outline-none cursor-default">
+                </div>
+                <button id="pickFolderBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white py-2 px-4 rounded-lg text-sm font-semibold transition flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" /></svg>
+                    Selecionar pasta...
+                </button>
+                <input type="file" id="folderInput" webkitdirectory multiple class="hidden">
+            </div>
+
+            <div class="flex flex-col md:flex-row md:items-center gap-3">
+                <button id="scanBtn" class="bg-gray-800 hover:bg-gray-700 text-white py-2 px-4 rounded-lg text-sm font-medium transition border border-gray-700 flex justify-center items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                    Carregar / atualizar logs
+                </button>
+                <svg id="spinner" class="hidden animate-spin h-4 w-4 text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                </svg>
+                <span id="statusText" class="text-xs font-mono text-gray-500 italic whitespace-pre-line"></span>
+            </div>
+        </div>
+
+        <!-- Busca + Ignorados -->
+        <div class="bg-gray-900 p-5 rounded-xl border border-gray-800 space-y-5">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
+                <div class="lg:col-span-2">
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Comando (opcional)</label>
+                    <input type="text" id="commandField" placeholder="Ex: /sellcactus ou /tpa" autocomplete="off"
+                        class="w-full bg-gray-950 border border-gray-700 rounded-lg py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-white outline-none transition">
+                </div>
+                <div class="lg:col-span-2">
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Jogador (opcional)</label>
+                    <div class="relative">
+                        <input type="text" id="playerField" placeholder="Ex: GabrielPlay_XD" autocomplete="off"
+                            class="w-full bg-gray-950 border border-gray-700 rounded-lg py-2 px-3 pl-9 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-white outline-none transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-500 absolute left-3 top-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    </div>
+                </div>
+                <div>
+                    <button id="searchBtn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 px-4 rounded-lg text-sm font-semibold transition flex justify-center items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                        Buscar
+                    </button>
+                </div>
+                <div>
+                    <button id="clearBtn" class="w-full bg-gray-800 hover:bg-gray-700 text-white py-2 px-4 rounded-lg text-sm font-medium transition border border-gray-700 flex justify-center items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                        Limpar
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5 pt-4 border-t border-gray-800">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Jogadores ignorados</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="ignorePlayerField" placeholder="Ignorar jogador" autocomplete="off"
+                            class="flex-1 bg-gray-950 border border-gray-700 rounded-lg py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-white outline-none transition">
+                        <button id="addIgnorePlayerBtn" title="Adicionar" class="bg-gray-800 hover:bg-gray-700 text-white px-3 rounded-lg border border-gray-700 transition text-lg leading-none">+</button>
+                    </div>
+                    <div id="ignoredPlayersRow" class="flex flex-wrap gap-1.5 mt-2"></div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Comandos ignorados</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="ignoreCommandField" placeholder="Ignorar comando (ex: /sit)" autocomplete="off"
+                            class="flex-1 bg-gray-950 border border-gray-700 rounded-lg py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-white outline-none transition">
+                        <button id="addIgnoreCommandBtn" title="Adicionar" class="bg-gray-800 hover:bg-gray-700 text-white px-3 rounded-lg border border-gray-700 transition text-lg leading-none">+</button>
+                    </div>
+                    <div id="ignoredCommandsRow" class="flex flex-wrap gap-1.5 mt-2"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Resultados -->
+        <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden shadow-2xl flex flex-col" style="height: 65vh; min-height: 380px;">
+
+            <div class="bg-gray-800 px-5 py-3 border-b border-gray-700 flex flex-wrap gap-3 justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <h2 class="text-sm font-semibold text-white">Comandos Encontrados</h2>
+                    <span id="resultCount" class="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-3 py-1 rounded-full font-medium">
+                        0 ocorrências
+                    </span>
+                </div>
+                <button id="exportBtn" disabled class="bg-gray-900 hover:bg-gray-700 text-white py-1.5 px-3 rounded-lg text-xs font-medium transition border border-gray-700 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                    Exportar Resultados
+                </button>
+            </div>
+
+            <div class="overflow-auto flex-1 relative">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-gray-950 text-gray-400 sticky top-0 z-10 shadow">
+                        <tr>
+                            <th class="py-3 px-4 font-semibold text-xs uppercase tracking-wider w-44">Data/Hora</th>
+                            <th class="py-3 px-4 font-semibold text-xs uppercase tracking-wider w-56">Jogador</th>
+                            <th class="py-3 px-4 font-semibold text-xs uppercase tracking-wider">Comando</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody" class="divide-y divide-gray-800 text-gray-300">
+                        <tr>
+                            <td colspan="3" class="py-10 text-center text-gray-500 italic">
+                                Selecione a pasta de logs, carregue os arquivos e digite um comando e/ou jogador para buscar.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // -------------------------------------------------------------------
+        // Parsing dos logs
+        // -------------------------------------------------------------------
+        const COMMAND_LINE_RE = /^\[(\d{2}:\d{2}:\d{2})\] \[[^\]]*\]:\s+(.+?) issued server command: (\/.*)$/;
+        const DATED_FILE_RE = /^(\d{4}-\d{2}-\d{2})-(\d+)\.log(\.gz)?$/;
+        const MAX_RESULTS_SHOWN = 3000;
+
+        const state = {
+            source: null,            // { type: 'handle'|'files', name, handle?, items? }
+            entries: [],
+            ignoredPlayers: new Set(),
+            ignoredCommands: new Set(),
+        };
+
+        const $ = id => document.getElementById(id);
+        const folderField = $('folderField');
+        const folderInput = $('folderInput');
+        const pickFolderBtn = $('pickFolderBtn');
+        const scanBtn = $('scanBtn');
+        const spinner = $('spinner');
+        const statusText = $('statusText');
+        const commandField = $('commandField');
+        const playerField = $('playerField');
+        const searchBtn = $('searchBtn');
+        const clearBtn = $('clearBtn');
+        const ignorePlayerField = $('ignorePlayerField');
+        const addIgnorePlayerBtn = $('addIgnorePlayerBtn');
+        const ignoredPlayersRow = $('ignoredPlayersRow');
+        const ignoreCommandField = $('ignoreCommandField');
+        const addIgnoreCommandBtn = $('addIgnoreCommandBtn');
+        const ignoredCommandsRow = $('ignoredCommandsRow');
+        const resultCount = $('resultCount');
+        const exportBtn = $('exportBtn');
+        const resultsBody = $('resultsBody');
+
+        const pad = n => String(n).padStart(2, '0');
+        const localDateStr = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        const localDateTimeStr = d => `${localDateStr(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        const tick = () => new Promise(r => setTimeout(r, 0));
+        const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+        const normalizeText = s => s.trim().toLowerCase();
+        const normalizePlayer = s => s.replace(/^\.+/, '').trim().toLowerCase();
+        const stripSlashes = s => s.replace(/^\/+/, '');
+
+        function commandName(text) {
+            const norm = stripSlashes(normalizeText(text));
+            return norm ? norm.split(' ')[0] : '';
+        }
+
+        function commandMatches(cmdNorm, queryNorm) {
+            if (queryNorm.includes(' ')) return cmdNorm.startsWith(queryNorm);
+            return cmdNorm.split(' ')[0] === queryNorm;
+        }
+
+        // Lista os arquivos de log da pasta (somente o nível principal) ordenados do mais antigo ao mais novo
+        async function listLogFiles(items) {
+            const files = [];
+            const today = localDateStr(new Date());
+
+            for (const item of items) {
+                const name = item.name;
+                const m = name.match(DATED_FILE_RE);
+                if (m) {
+                    files.push({ item, date: m[1], seq: parseInt(m[2], 10) });
+                } else if (name === 'latest.log') {
+                    files.push({ item, date: today, seq: Infinity });
+                } else if (name.endsWith('.log') || name.endsWith('.log.gz')) {
+                    let date = today;
+                    try { date = localDateStr(new Date((await item.getFile()).lastModified)); } catch (_) { /* mantém hoje */ }
+                    files.push({ item, date, seq: 0 });
+                }
+            }
+
+            files.sort((a, b) => {
+                if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+                if (a.seq === b.seq) return 0;
+                return a.seq < b.seq ? -1 : 1;
+            });
+            return files;
+        }
+
+        // Lê o arquivo (.log ou .log.gz) linha a linha, sem carregar tudo na memória
+        async function readLines(file, onLine) {
+            let stream = file.stream();
+            if (file.name.endsWith('.gz')) {
+                if (typeof DecompressionStream === 'undefined') throw new Error('Navegador sem suporte a gzip');
+                stream = stream.pipeThrough(new DecompressionStream('gzip'));
+            }
+            const reader = stream.pipeThrough(new TextDecoderStream('utf-8')).getReader();
+            let buf = '';
+            const emit = l => onLine(l.endsWith('\r') ? l.slice(0, -1) : l);
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buf += value;
+                const lines = buf.split('\n');
+                buf = lines.pop();
+                for (const l of lines) emit(l);
+            }
+            if (buf) emit(buf);
+        }
+
+        async function scanLogs(items, onProgress) {
+            const files = await listLogFiles(items);
+            const entries = [];
+            let order = 0;
+            let failed = 0;
+
+            for (let i = 0; i < files.length; i++) {
+                const { item, date } = files[i];
+                onProgress(i, files.length, item.name);
+                await tick();
+                try {
+                    const file = await item.getFile();
+                    await readLines(file, line => {
+                        if (!line.includes('issued server command')) return;
+                        const m = COMMAND_LINE_RE.exec(line);
+                        if (!m) return;
+                        const command = m[3].trim();
+                        order++;
+                        entries.push({
+                            order, date, time: m[1], player: m[2], command,
+                            pn: normalizePlayer(m[2]),
+                            cn: stripSlashes(normalizeText(command)),
+                            cname: commandName(command),
+                        });
+                    });
+                } catch (_) {
+                    failed++;
+                }
+            }
+            return { entries, failed, total: files.length };
+        }
+
+        // -------------------------------------------------------------------
+        // Seleção da pasta
+        // -------------------------------------------------------------------
+        function setFolder(source) {
+            state.source = source;
+            folderField.value = source.name;
+            setStatus('Pasta selecionada. Clique em "Carregar / atualizar logs".');
+        }
+
+        async function pickFolder() {
+            // Chrome/Edge: acesso direto à pasta (permite atualizar sem escolher de novo)
+            if (window.showDirectoryPicker) {
+                try {
+                    const handle = await window.showDirectoryPicker({ mode: 'read' });
+                    setFolder({ type: 'handle', name: handle.name, handle });
+                    return;
+                } catch (err) {
+                    if (err && err.name === 'AbortError') return;
+                    // qualquer outro erro: cai para o seletor tradicional
+                }
+            }
+            folderInput.click();
+        }
+
+        folderInput.addEventListener('change', () => {
+            const files = Array.from(folderInput.files || []);
+            if (!files.length) return;
+            const root = files[0].webkitRelativePath.split('/')[0];
+            const items = files
+                .filter(f => f.webkitRelativePath.split('/').length === 2) // só o nível principal da pasta
+                .map(f => ({ name: f.name, getFile: async () => f }));
+            folderInput.value = '';
+            setFolder({ type: 'files', name: root, items });
+        });
+
+        async function getItems() {
+            if (state.source.type === 'files') return state.source.items;
+            const items = [];
+            for await (const [name, h] of state.source.handle.entries()) {
+                if (h.kind === 'file') items.push({ name, getFile: () => h.getFile() });
+            }
+            return items;
+        }
+
+        // -------------------------------------------------------------------
+        // Carregamento
+        // -------------------------------------------------------------------
+        function setStatus(text) { statusText.textContent = text; }
+
+        function setBusy(busy) {
+            spinner.classList.toggle('hidden', !busy);
+            scanBtn.disabled = busy;
+            searchBtn.disabled = busy;
+            pickFolderBtn.disabled = busy;
+        }
+
+        async function doScan() {
+            if (!state.source) {
+                setStatus('Selecione uma pasta de logs válida primeiro.');
+                return;
+            }
+            setBusy(true);
+            setStatus('Lendo arquivos de log...');
+            try {
+                const items = await getItems();
+                const { entries, failed } = await scanLogs(items, (i, total, name) => {
+                    setStatus(`Lendo ${name} (${i + 1}/${total})...`);
+                });
+                state.entries = entries;
+                let msg = `${entries.length.toLocaleString('pt-BR')} comando(s) carregado(s) de "${state.source.name}".`;
+                if (failed) {
+                    msg += `\n${failed} arquivo(s) não puderam ser lidos.`;
+                    if (state.source.type === 'files') msg += ' Selecione a pasta novamente para atualizar.';
+                }
+                setStatus(msg);
+            } catch (err) {
+                setStatus('Erro ao ler os logs: ' + err.message);
+            } finally {
+                setBusy(false);
+                applyFilter();
+            }
+        }
+
+        // -------------------------------------------------------------------
+        // Filtros e resultados
+        // -------------------------------------------------------------------
+        function getCurrentMatches() {
+            const commandQuery = stripSlashes(normalizeText(commandField.value || ''));
+            const playerQuery = normalizePlayer(playerField.value || '');
+            if (!commandQuery && !playerQuery) return null;
+
+            const matched = state.entries.filter(e =>
+                (!commandQuery || commandMatches(e.cn, commandQuery)) &&
+                (!playerQuery || e.pn.includes(playerQuery)) &&
+                !state.ignoredPlayers.has(e.pn) &&
+                !state.ignoredCommands.has(e.cname)
+            );
+            matched.reverse(); // mais recentes primeiro
+            return matched;
+        }
+
+        function messageRow(text, cls) {
+            resultsBody.innerHTML = `<tr><td colspan="3" class="py-10 text-center italic ${cls}">${esc(text)}</td></tr>`;
+        }
+
+        function applyFilter() {
+            const matched = getCurrentMatches();
+
+            if (matched === null) {
+                resultCount.textContent = '0 ocorrências';
+                exportBtn.disabled = true;
+                messageRow('Digite um comando e/ou um nome de jogador para buscar.', 'text-gray-500');
+                return;
+            }
+
+            if (state.entries.length === 0) {
+                resultCount.textContent = '0 ocorrências';
+                exportBtn.disabled = true;
+                messageRow('Carregue os logs antes de buscar.', 'text-amber-400 font-semibold');
+                return;
+            }
+
+            const total = matched.length;
+            const uniquePlayers = new Set(matched.map(e => e.player)).size;
+            let label = `${total.toLocaleString('pt-BR')} ocorrência(s) — ${uniquePlayers.toLocaleString('pt-BR')} jogador(es) único(s)`;
+            if (total > MAX_RESULTS_SHOWN) label += ` (mostrando as ${MAX_RESULTS_SHOWN.toLocaleString('pt-BR')} mais recentes)`;
+            resultCount.textContent = label;
+            exportBtn.disabled = total === 0;
+
+            if (total === 0) {
+                messageRow('Nenhuma ocorrência encontrada com estes filtros.', 'text-rose-400 font-semibold');
+                return;
+            }
+
+            resultsBody.innerHTML = matched.slice(0, MAX_RESULTS_SHOWN).map(e => `
+                <tr class="transition-colors duration-150">
+                    <td class="py-2.5 px-4 font-mono text-xs text-gray-500 whitespace-nowrap">${e.date} ${e.time}</td>
+                    <td class="py-2.5 px-4 font-semibold text-gray-200 whitespace-nowrap">${esc(e.player)}</td>
+                    <td class="py-2.5 px-4 font-mono text-indigo-300 break-all">${esc(e.command)}</td>
+                </tr>`).join('');
+        }
+
+        // -------------------------------------------------------------------
+        // Ignorados (jogadores e comandos)
+        // -------------------------------------------------------------------
+        function chipHtml(label, kind, value) {
+            return `<span class="inline-flex items-center gap-1 bg-white/10 rounded-full pl-3 pr-1 py-0.5 text-xs text-gray-200">
+                        ${esc(label)}
+                        <button data-kind="${kind}" data-value="${esc(value)}" title="Remover"
+                            class="h-5 w-5 rounded-full hover:bg-white/20 text-gray-400 hover:text-white leading-none">×</button>
+                    </span>`;
+        }
+
+        function refreshIgnoredPlayers() {
+            ignoredPlayersRow.innerHTML = [...state.ignoredPlayers].sort()
+                .map(n => chipHtml(n, 'player', n)).join('');
+        }
+
+        function refreshIgnoredCommands() {
+            ignoredCommandsRow.innerHTML = [...state.ignoredCommands].sort()
+                .map(n => chipHtml('/' + n, 'command', n)).join('');
+        }
+
+        function addIgnoredPlayer() {
+            const name = normalizePlayer(ignorePlayerField.value || '');
+            if (!name) return;
+            state.ignoredPlayers.add(name);
+            ignorePlayerField.value = '';
+            refreshIgnoredPlayers();
+            applyFilter();
+        }
+
+        function addIgnoredCommand() {
+            const name = commandName(ignoreCommandField.value || '');
+            if (!name) return;
+            state.ignoredCommands.add(name);
+            ignoreCommandField.value = '';
+            refreshIgnoredCommands();
+            applyFilter();
+        }
+
+        document.addEventListener('click', e => {
+            const btn = e.target.closest('button[data-kind]');
+            if (!btn) return;
+            if (btn.dataset.kind === 'player') {
+                state.ignoredPlayers.delete(normalizePlayer(btn.dataset.value));
+                refreshIgnoredPlayers();
+            } else {
+                state.ignoredCommands.delete(btn.dataset.value);
+                refreshIgnoredCommands();
+            }
+            applyFilter();
+        });
+
+        // -------------------------------------------------------------------
+        // Exportação
+        // -------------------------------------------------------------------
+        async function exportResults() {
+            const matched = getCurrentMatches();
+            if (!matched || !matched.length) return;
+
+            const lines = [
+                `Resultados exportados em: ${localDateTimeStr(new Date())}`,
+                '-'.repeat(60),
+                ...matched.map(e => `[${e.date} ${e.time}] ${e.player}: ${e.command}`),
+            ];
+            const text = lines.join('\n') + '\n';
+            const fileName = 'comandos_filtrados.txt';
+
+            try {
+                if (window.showSaveFilePicker) {
+                    try {
+                        const h = await window.showSaveFilePicker({
+                            suggestedName: fileName,
+                            types: [{ description: 'Arquivo de texto', accept: { 'text/plain': ['.txt'] } }],
+                        });
+                        const w = await h.createWritable();
+                        await w.write(text);
+                        await w.close();
+                        setStatus(`Exportado com sucesso para:\n${h.name}`);
+                        return;
+                    } catch (err) {
+                        if (err && err.name === 'AbortError') return;
+                        // outro erro: usa o download comum
+                    }
+                }
+                const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                setStatus(`Exportado com sucesso: ${fileName}`);
+            } catch (err) {
+                setStatus('Erro ao exportar: ' + err.message);
+            }
+        }
+
+        // -------------------------------------------------------------------
+        // Eventos
+        // -------------------------------------------------------------------
+        let debounceTimer;
+        const debouncedFilter = () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(applyFilter, 300); };
+
+        pickFolderBtn.addEventListener('click', pickFolder);
+        scanBtn.addEventListener('click', doScan);
+        searchBtn.addEventListener('click', applyFilter);
+        exportBtn.addEventListener('click', exportResults);
+
+        [commandField, playerField].forEach(input => {
+            input.addEventListener('input', debouncedFilter);
+            input.addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(debounceTimer); applyFilter(); } });
+        });
+
+        clearBtn.addEventListener('click', () => {
+            commandField.value = '';
+            playerField.value = '';
+            applyFilter();
+        });
+
+        addIgnorePlayerBtn.addEventListener('click', addIgnoredPlayer);
+        addIgnoreCommandBtn.addEventListener('click', addIgnoredCommand);
+        ignorePlayerField.addEventListener('keydown', e => { if (e.key === 'Enter') addIgnoredPlayer(); });
+        ignoreCommandField.addEventListener('keydown', e => { if (e.key === 'Enter') addIgnoredCommand(); });
+    </script>
+</body>
+</html>

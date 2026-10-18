@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel de Auditoria de Economia</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #111827; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4B5563; }
+        
+        /* Efeito de hover suave nas linhas da tabela */
+        tbody tr:hover { background-color: #1F2937; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-300 min-h-screen p-4 md:p-6 font-sans">
+
+    <div class="max-w-screen-2xl mx-auto space-y-6">
+        
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-gray-800 pb-4 gap-4">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold text-white flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-indigo-500" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M2 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm3.293 1.293a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L7.586 10 5.293 7.707a1 1 0 010-1.414zM11 12a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd" />
+                    </svg>
+                    Painel de Auditoria de Transações
+                </h1>
+                <p class="text-gray-500 mt-1 text-sm">Análise estruturada de logs (Ordem: Mais recentes primeiro).</p>
+            </div>
+            
+            <div class="flex items-center gap-3 bg-gray-900 p-2 rounded-lg border border-gray-800 w-full md:w-auto">
+                <input type="file" id="fileInput" accept=".log,.txt" class="block w-full text-xs text-gray-400
+                    file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0
+                    file:text-xs file:font-semibold file:bg-indigo-600 file:text-white
+                    hover:file:bg-indigo-500 cursor-pointer transition"/>
+                <span id="fileStats" class="text-xs font-mono text-gray-500 whitespace-nowrap px-2">Aguardando arquivo...</span>
+            </div>
+        </header>
+
+        <div class="bg-gray-900 p-5 rounded-xl border border-gray-800 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
+            
+            <div class="lg:col-span-2">
+                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Jogador (Envolvido)</label>
+                <div class="relative">
+                    <input type="text" id="searchPlayer" placeholder="Ex: .Angelus3980" class="w-full bg-gray-950 border border-gray-700 rounded-lg py-2 px-3 pl-9 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-white outline-none transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-500 absolute left-3 top-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Módulo</label>
+                <select id="searchModule" class="w-full bg-gray-950 border border-gray-700 rounded-lg py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-white outline-none transition cursor-pointer">
+                    <option value="">Todos</option>
+                    <option value="blobrao">blobrao</option>
+                    <option value="pontosdemissao">pontosdemissao</option>
+                    <option value="pontodevoto">pontodevoto</option>
+                    <option value="blockbux">blockbux</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Tipo de Ação</label>
+                <select id="searchAction" class="w-full bg-gray-950 border border-gray-700 rounded-lg py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-white outline-none transition cursor-pointer">
+                    <option value="">Todas</option>
+                    <option value="gave">Recebimento (Gave)</option>
+                    <option value="took">Dedução (Took)</option>
+                    <option value="paid">Pagamento (Paid)</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Valor Exato</label>
+                <input type="number" id="searchAmount" placeholder="Ex: 5000" class="w-full bg-gray-950 border border-gray-700 rounded-lg py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-white outline-none transition">
+            </div>
+
+            <div>
+                <button id="clearFilters" class="w-full bg-gray-800 hover:bg-gray-700 text-white py-2 px-4 rounded-lg text-sm font-medium transition border border-gray-700 flex justify-center items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                    Limpar
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden shadow-2xl flex flex-col" style="height: calc(100vh - 280px);">
+            
+            <div class="bg-gray-800 px-5 py-3 border-b border-gray-700 flex justify-between items-center">
+                <h2 class="text-sm font-semibold text-white">Transações Registradas</h2>
+                <span id="resultCount" class="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-3 py-1 rounded-full font-medium">
+                    0 encontradas
+                </span>
+            </div>
+
+            <div class="overflow-auto flex-1 relative">
+                <table class="w-full text-left text-sm whitespace-nowrap">
+                    <thead class="bg-gray-950 text-gray-400 sticky top-0 z-10 shadow">
+                        <tr>
+                            <th class="py-3 px-4 font-semibold text-xs uppercase tracking-wider">Data/Hora</th>
+                            <th class="py-3 px-4 font-semibold text-xs uppercase tracking-wider">Módulo</th>
+                            <th class="py-3 px-4 font-semibold text-xs uppercase tracking-wider">Ação</th>
+                            <th class="py-3 px-4 font-semibold text-xs uppercase tracking-wider">Origem / Ator</th>
+                            <th class="py-3 px-4 font-semibold text-xs uppercase tracking-wider">Destino / Alvo</th>
+                            <th class="py-3 px-4 font-semibold text-xs uppercase tracking-wider text-right">Valor</th>
+                            <th class="py-3 px-4 font-semibold text-xs uppercase tracking-wider">Novo Saldo</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logTableBody" class="divide-y divide-gray-800 text-gray-300">
+                        <tr>
+                            <td colspan="7" class="py-10 text-center text-gray-500 italic">
+                                Carregue um arquivo .log para iniciar a auditoria.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        let parsedLogs = [];
+        const MAX_RENDER_ROWS = 500; // Limite de renderização para manter o painel fluido
+
+        // Elementos DOM
+        const fileInput = document.getElementById('fileInput');
+        const searchPlayer = document.getElementById('searchPlayer');
+        const searchModule = document.getElementById('searchModule');
+        const searchAction = document.getElementById('searchAction');
+        const searchAmount = document.getElementById('searchAmount');
+        const clearFiltersBtn = document.getElementById('clearFilters');
+        const logTableBody = document.getElementById('logTableBody');
+        const resultCount = document.getElementById('resultCount');
+        const fileStats = document.getElementById('fileStats');
+
+        // Regex Mestre para fatiar o Log
+        // Padrão esperado: [Data] [Modulo] Resto...
+        const baseRegex = /^\[(.*?)\] \[(.*?)\] (.*)$/;
+        // Padrão de transação: (Ator) (Ação) (Valor) (to/from) (Alvo). (Saldos)
+        const txRegex = /^(.*?) (gave|took|paid) (.*?) (?:to|from) (.*?)(?:'s balance)?\.\s*(New balances?:.*)$/;
+
+        // Limpa número para cálculos numéricos (remove tudo menos dígitos)
+        function cleanNumber(str) {
+            const numStr = str.replace(/[^\d]/g, '');
+            return parseInt(numStr, 10) || 0;
+        }
+
+        // Função para colorir e formatar a Badge da Ação
+        function getActionBadge(action) {
+            switch(action) {
+                case 'gave': return '<span class="px-2 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded text-xs font-bold uppercase tracking-wider">Gave (Deu)</span>';
+                case 'took': return '<span class="px-2 py-1 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded text-xs font-bold uppercase tracking-wider">Took (Tirou)</span>';
+                case 'paid': return '<span class="px-2 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded text-xs font-bold uppercase tracking-wider">Paid (Pagou)</span>';
+                default: return `<span class="px-2 py-1 bg-gray-700 text-gray-300 rounded text-xs uppercase">${action}</span>`;
+            }
+        }
+
+        // Colorir símbolos de moedas
+        function formatCurrency(text) {
+            return text.replace(/(℗|®|◎|₪)/g, '<span class="text-amber-400 font-bold">$1</span>');
+        }
+
+        // Carregar e processar o arquivo
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            fileStats.textContent = "Processando...";
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const rawLines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+                
+                parsedLogs = rawLines.map(line => {
+                    const match = line.match(baseRegex);
+                    if (!match) return null;
+
+                    const date = match[1];
+                    const module = match[2];
+                    const rest = match[3];
+
+                    let actor = "-", action = "-", amountStr = "-", target = "-", balance = "-", numAmount = 0;
+
+                    const txMatch = rest.match(txRegex);
+                    if (txMatch) {
+                        actor = txMatch[1].replace('Vault Eco - [lang]blobroes[/lang]', '<span class="text-gray-500 italic">Vault Eco</span>');
+                        action = txMatch[2];
+                        amountStr = txMatch[3];
+                        target = txMatch[4];
+                        balance = txMatch[5];
+                        numAmount = cleanNumber(amountStr);
+                    } else {
+                        action = "Outro";
+                        actor = rest; // Joga o texto todo aqui se falhar o regex
+                    }
+
+                    return { date, module, action, actor, target, amountStr, numAmount, balance, raw: line };
+                }).filter(log => log !== null).reverse(); // <--- INVERTE A ORDEM AQUI (MAIS RECENTE PRIMEIRO)
+
+                fileStats.textContent = `${parsedLogs.length.toLocaleString('pt-BR')} registros lidos`;
+                applyFilters();
+            };
+
+            reader.readAsText(file);
+        });
+
+        // Eventos de filtro
+        [searchPlayer, searchModule, searchAction, searchAmount].forEach(input => {
+            input.addEventListener('input', applyFilters);
+        });
+
+        clearFiltersBtn.addEventListener('click', () => {
+            searchPlayer.value = '';
+            searchModule.value = '';
+            searchAction.value = '';
+            searchAmount.value = '';
+            applyFilters();
+        });
+
+        // Motor de Filtragem
+        function applyFilters() {
+            if (parsedLogs.length === 0) return;
+
+            const playerQ = searchPlayer.value.toLowerCase();
+            const moduleQ = searchModule.value.toLowerCase();
+            const actionQ = searchAction.value.toLowerCase();
+            const amountQ = parseInt(searchAmount.value, 10) || 0;
+
+            const filtered = parsedLogs.filter(log => {
+                // Filtro de Jogador (checa tanto se foi ele quem agiu quanto o alvo)
+                if (playerQ) {
+                    const involvePlayer = log.actor.toLowerCase().includes(playerQ) || log.target.toLowerCase().includes(playerQ);
+                    if (!involvePlayer) return false;
+                }
+
+                if (moduleQ && log.module.toLowerCase() !== moduleQ) return false;
+                if (actionQ && log.action.toLowerCase() !== actionQ) return false;
+                
+                // Filtro Exato de Valor (mudado de Mínimo para Exato)
+                if (amountQ > 0 && log.numAmount !== amountQ) return false;
+
+                return true;
+            });
+
+            renderTable(filtered);
+        }
+
+        // Renderização da Tabela
+        function renderTable(logs) {
+            const total = logs.length;
+            const toDisplay = logs.slice(0, MAX_RENDER_ROWS);
+            
+            resultCount.textContent = `${total.toLocaleString('pt-BR')} resultados ${total > MAX_RENDER_ROWS ? `(Limitado a ${MAX_RENDER_ROWS} na tela)` : ''}`;
+            
+            if (toDisplay.length === 0) {
+                logTableBody.innerHTML = `<tr><td colspan="7" class="py-10 text-center text-rose-400 italic font-semibold">Nenhuma transação encontrada com estes filtros.</td></tr>`;
+                return;
+            }
+
+            const html = toDisplay.map(log => {
+                return `
+                    <tr class="group transition-colors duration-150">
+                        <td class="py-3 px-4 font-mono text-xs text-gray-500">${log.date}</td>
+                        <td class="py-3 px-4 text-indigo-400 font-medium text-xs">[${log.module}]</td>
+                        <td class="py-3 px-4">${getActionBadge(log.action)}</td>
+                        <td class="py-3 px-4 font-medium text-gray-300 truncate max-w-[150px]" title="${log.actor.replace(/<[^>]*>?/gm, '')}">${log.actor}</td>
+                        <td class="py-3 px-4 font-medium text-gray-300 truncate max-w-[150px]">${log.target}</td>
+                        <td class="py-3 px-4 text-right font-mono font-bold text-gray-200 bg-gray-800/30 group-hover:bg-transparent transition">${formatCurrency(log.amountStr)}</td>
+                        <td class="py-3 px-4 text-xs text-gray-400 font-mono max-w-[200px] truncate" title="${log.balance}">${formatCurrency(log.balance)}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            logTableBody.innerHTML = html;
+        }
+    </script>
+</body>
+</html>
