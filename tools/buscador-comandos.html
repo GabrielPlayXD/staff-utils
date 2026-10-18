@@ -27,7 +27,7 @@
                 </svg>
                 Buscador de Comandos
             </h1>
-            <p class="text-gray-500 mt-1 text-sm">Logs do servidor Minecraft: veja quem usou cada comando (Ordem: mais recentes primeiro).</p>
+            <p class="text-gray-500 mt-1 text-sm">Logs do servidor Minecraft: veja quem usou cada comando (Ordem: mais recentes primeiro). Usa pouca memória: um índice leve no disco evita reler arquivos desnecessários.</p>
         </header>
 
         <!-- Pasta de logs -->
@@ -48,12 +48,14 @@
             <div class="flex flex-col md:flex-row md:items-center gap-3">
                 <button id="scanBtn" class="bg-gray-800 hover:bg-gray-700 text-white py-2 px-4 rounded-lg text-sm font-medium transition border border-gray-700 flex justify-center items-center gap-2">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                    Carregar / atualizar logs
+                    Atualizar índice
                 </button>
+                <button id="clearIndexBtn" title="Apaga o índice desta pasta para recriá-lo do zero" class="bg-gray-900 hover:bg-gray-800 text-gray-400 py-2 px-3 rounded-lg text-xs font-medium transition border border-gray-800">Limpar índice</button>
                 <svg id="spinner" class="hidden animate-spin h-4 w-4 text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
                 </svg>
+                <button id="cancelBtn" class="hidden bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border border-rose-500/40 py-1.5 px-3 rounded-lg text-xs font-medium transition">Cancelar</button>
                 <span id="statusText" class="text-xs font-mono text-gray-500 italic whitespace-pre-line"></span>
             </div>
         </div>
@@ -86,6 +88,21 @@
                         Limpar
                     </button>
                 </div>
+            </div>
+
+            <div class="flex flex-wrap items-end gap-4 pt-4 border-t border-gray-800">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Período: de</label>
+                    <input type="date" id="dateFrom" style="color-scheme: dark" class="bg-gray-950 border border-gray-700 rounded-lg py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-white outline-none transition">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">até</label>
+                    <input type="date" id="dateTo" style="color-scheme: dark" class="bg-gray-950 border border-gray-700 rounded-lg py-2 px-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-white outline-none transition">
+                </div>
+                <label class="flex items-center gap-2 text-sm text-gray-400 cursor-pointer pb-2" title="Para de ler assim que completar as 3000 ocorrências mais recentes. O total passa a ser aproximado.">
+                    <input type="checkbox" id="stopEarly" class="accent-indigo-500 h-4 w-4">
+                    Busca rápida (parar ao completar as 3000 mais recentes; total aproximado)
+                </label>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-5 pt-4 border-t border-gray-800">
@@ -150,17 +167,25 @@
 
     <script>
         // -------------------------------------------------------------------
-        // Parsing dos logs
+        // Modo econômico de memória
+        // -------------------------------------------------------------------
+        // Nenhuma linha de log fica guardada na memória. Cada busca lê os arquivos
+        // em streaming (do mais novo para o mais antigo), guarda apenas as
+        // MAX_RESULTS_SHOWN ocorrências mais recentes que serão exibidas e só
+        // conta o restante. O custo é a velocidade: cada busca relê os logs.
         // -------------------------------------------------------------------
         const COMMAND_LINE_RE = /^\[(\d{2}:\d{2}:\d{2})\] \[[^\]]*\]:\s+(.+?) issued server command: (\/.*)$/;
         const DATED_FILE_RE = /^(\d{4}-\d{2}-\d{2})-(\d+)\.log(\.gz)?$/;
         const MAX_RESULTS_SHOWN = 3000;
+        const EXPORT_BATCH = 2000; // linhas por bloco gravado na exportação
 
         const state = {
             source: null,            // { type: 'handle'|'files', name, handle?, items? }
-            entries: [],
+            files: [],               // somente a lista ordenada de arquivos (sem conteúdo)
             ignoredPlayers: new Set(),
             ignoredCommands: new Set(),
+            abort: null,             // AbortController da operação em andamento
+            searched: false,         // já houve alguma busca? (para refazer ao mudar ignorados)
         };
 
         const $ = id => document.getElementById(id);
@@ -168,6 +193,11 @@
         const folderInput = $('folderInput');
         const pickFolderBtn = $('pickFolderBtn');
         const scanBtn = $('scanBtn');
+        const clearIndexBtn = $('clearIndexBtn');
+        const dateFrom = $('dateFrom');
+        const dateTo = $('dateTo');
+        const stopEarly = $('stopEarly');
+        const cancelBtn = $('cancelBtn');
         const spinner = $('spinner');
         const statusText = $('statusText');
         const commandField = $('commandField');
@@ -189,6 +219,7 @@
         const localDateTimeStr = d => `${localDateStr(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
         const tick = () => new Promise(r => setTimeout(r, 0));
         const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const fmt = n => n.toLocaleString('pt-BR');
 
         const normalizeText = s => s.trim().toLowerCase();
         const normalizePlayer = s => s.replace(/^\.+/, '').trim().toLowerCase();
@@ -204,7 +235,104 @@
             return cmdNorm.split(' ')[0] === queryNorm;
         }
 
-        // Lista os arquivos de log da pasta (somente o nível principal) ordenados do mais antigo ao mais novo
+        class Cancelled extends Error {}
+
+        // -------------------------------------------------------------------
+        // Índice leve no disco (IndexedDB) — NÃO fica na RAM
+        // -------------------------------------------------------------------
+        // Para cada arquivo de log guarda só: tamanho, data de modificação, a lista
+        // de jogadores e a lista de nomes de comando que aparecem nele. Na busca,
+        // arquivos que não contêm o jogador/comando procurado nem chegam a ser abertos.
+        // Se o IndexedDB não estiver disponível, usa um Map em memória (ainda pequeno).
+        const DB_NAME = 'buscador-comandos-index';
+        const STORE = 'files';
+        const memIndex = new Map();
+        let dbPromise = null;
+
+        function openDb() {
+            if (!dbPromise) {
+                dbPromise = new Promise((resolve, reject) => {
+                    try {
+                        const rq = indexedDB.open(DB_NAME, 1);
+                        rq.onupgradeneeded = () => rq.result.createObjectStore(STORE);
+                        rq.onsuccess = () => resolve(rq.result);
+                        rq.onerror = () => reject(rq.error);
+                    } catch (e) { reject(e); }
+                }).catch(() => null);
+            }
+            return dbPromise;
+        }
+
+        const idxKey = name => `${state.source.name}|${name}`;
+
+        async function idxGet(key) {
+            const db = await openDb();
+            if (!db) return memIndex.get(key) || null;
+            return new Promise(resolve => {
+                try {
+                    const rq = db.transaction(STORE).objectStore(STORE).get(key);
+                    rq.onsuccess = () => resolve(rq.result || null);
+                    rq.onerror = () => resolve(null);
+                } catch (_) { resolve(null); }
+            });
+        }
+
+        async function idxPut(key, rec) {
+            const db = await openDb();
+            if (!db) { memIndex.set(key, rec); return; }
+            return new Promise(resolve => {
+                try {
+                    const tx = db.transaction(STORE, 'readwrite');
+                    tx.objectStore(STORE).put(rec, key);
+                    tx.oncomplete = () => resolve();
+                    tx.onerror = tx.onabort = () => { memIndex.set(key, rec); resolve(); };
+                } catch (_) { memIndex.set(key, rec); resolve(); }
+            });
+        }
+
+        async function idxClearFolder() {
+            const prefix = `${state.source.name}|`;
+            for (const k of [...memIndex.keys()]) if (k.startsWith(prefix)) memIndex.delete(k);
+            const db = await openDb();
+            if (!db) return;
+            await new Promise(resolve => {
+                try {
+                    const tx = db.transaction(STORE, 'readwrite');
+                    tx.objectStore(STORE).delete(IDBKeyRange.bound(prefix, prefix + '￿'));
+                    tx.oncomplete = tx.onerror = tx.onabort = () => resolve();
+                } catch (_) { resolve(); }
+            });
+        }
+
+        const isFresh = (rec, file) => !!rec && rec.size === file.size && rec.mtime === file.lastModified;
+
+        // Lê um arquivo inteiro uma única vez e devolve o registro de índice (pequeno)
+        async function buildIndexRecord(file, signal) {
+            const players = new Set();
+            const cmds = new Set();
+            let n = 0;
+            await readLines(file, line => {
+                if (!line.includes('issued server command')) return;
+                const m = COMMAND_LINE_RE.exec(line);
+                if (!m) return;
+                n++;
+                players.add(normalizePlayer(m[2]));
+                cmds.add(commandName(m[3].trim()));
+            }, signal);
+            return { size: file.size, mtime: file.lastModified, n, players: [...players], cmds: [...cmds] };
+        }
+
+        // O arquivo pode conter o que procuramos? (conservador: na dúvida, lê)
+        function indexMayMatch(rec, commandQuery, playerQuery) {
+            if (commandQuery && !rec.cmds.includes(commandQuery.split(' ')[0])) return false;
+            if (playerQuery && !rec.players.some(p => p.includes(playerQuery))) return false;
+            return true;
+        }
+
+        // -------------------------------------------------------------------
+        // Lista de arquivos (apenas nomes/referências, nunca o conteúdo)
+        // -------------------------------------------------------------------
+        // Ordenada do mais antigo ao mais novo.
         async function listLogFiles(items) {
             const files = [];
             const today = localDateStr(new Date());
@@ -213,13 +341,13 @@
                 const name = item.name;
                 const m = name.match(DATED_FILE_RE);
                 if (m) {
-                    files.push({ item, date: m[1], seq: parseInt(m[2], 10) });
+                    files.push({ item, name, date: m[1], seq: parseInt(m[2], 10) });
                 } else if (name === 'latest.log') {
-                    files.push({ item, date: today, seq: Infinity });
+                    files.push({ item, name, date: today, seq: Infinity });
                 } else if (name.endsWith('.log') || name.endsWith('.log.gz')) {
                     let date = today;
                     try { date = localDateStr(new Date((await item.getFile()).lastModified)); } catch (_) { /* mantém hoje */ }
-                    files.push({ item, date, seq: 0 });
+                    files.push({ item, name, date, seq: 0 });
                 }
             }
 
@@ -231,58 +359,137 @@
             return files;
         }
 
-        // Lê o arquivo (.log ou .log.gz) linha a linha, sem carregar tudo na memória
-        async function readLines(file, onLine) {
+        // -------------------------------------------------------------------
+        // Leitura em streaming (.log ou .log.gz), linha a linha.
+        // Em memória fica no máximo um bloco de ~64 KB + uma linha parcial.
+        // -------------------------------------------------------------------
+        async function readLines(file, onLine, signal) {
             let stream = file.stream();
             if (file.name.endsWith('.gz')) {
                 if (typeof DecompressionStream === 'undefined') throw new Error('Navegador sem suporte a gzip');
                 stream = stream.pipeThrough(new DecompressionStream('gzip'));
             }
-            const reader = stream.pipeThrough(new TextDecoderStream('utf-8')).getReader();
-            let buf = '';
-            const emit = l => onLine(l.endsWith('\r') ? l.slice(0, -1) : l);
+            const reader = stream.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let tail = '';
+            let chunks = 0;
 
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) break;
-                buf += value;
-                const lines = buf.split('\n');
-                buf = lines.pop();
-                for (const l of lines) emit(l);
+            const emit = l => onLine(l.charCodeAt(l.length - 1) === 13 ? l.slice(0, -1) : l);
+
+            try {
+                while (true) {
+                    if (signal.aborted) throw new Cancelled();
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    const text = tail + decoder.decode(value, { stream: true });
+                    let start = 0, nl;
+                    while ((nl = text.indexOf('\n', start)) !== -1) {
+                        emit(text.slice(start, nl));
+                        start = nl + 1;
+                    }
+                    tail = text.slice(start);
+
+                    // Linha gigante sem quebra: descarta para não crescer a memória
+                    if (tail.length > 1_000_000) tail = '';
+
+                    if ((++chunks & 15) === 0) await tick(); // deixa a interface respirar
+                }
+                tail += decoder.decode();
+                if (tail) emit(tail);
+            } finally {
+                try { await reader.cancel(); } catch (_) { /* ignora */ }
             }
-            if (buf) emit(buf);
         }
 
-        async function scanLogs(items, onProgress) {
-            const files = await listLogFiles(items);
-            const entries = [];
-            let order = 0;
+        // -------------------------------------------------------------------
+        // Busca: percorre os logs do mais novo ao mais antigo.
+        //   - guarda só as `keep` ocorrências mais recentes (para a tela)
+        //   - conta o total e os jogadores únicos
+        //   - opcionalmente envia TODAS as ocorrências para `onBatch` (exportação)
+        // -------------------------------------------------------------------
+        function readFilters() {
+            return {
+                commandQuery: stripSlashes(normalizeText(commandField.value || '')),
+                playerQuery: normalizePlayer(playerField.value || ''),
+                from: dateFrom.value || '',
+                to: dateTo.value || '',
+                stopEarly: stopEarly.checked,
+            };
+        }
+
+        async function searchLogs({ commandQuery, playerQuery, from, to, stopEarly }, { keep, onBatch, onProgress, signal }) {
+            // arquivos dentro do período, do mais novo para o mais antigo
+            const files = state.files.filter(f => (!from || f.date >= from) && (!to || f.date <= to)).reverse();
+            const shown = [];                            // já em ordem "mais recente primeiro"
+            const players = new Set();
+            let total = 0;
             let failed = 0;
+            let skipped = 0;     // pulados pelo índice
+            let opened = 0;      // realmente lidos
+            let partial = false; // parou antes de ler tudo (busca rápida)
 
             for (let i = 0; i < files.length; i++) {
-                const { item, date } = files[i];
-                onProgress(i, files.length, item.name);
+                if (signal.aborted) throw new Cancelled();
+                if (stopEarly && !onBatch && shown.length >= keep) { partial = true; break; }
+                const { item, name, date } = files[i];
+                onProgress(i, files.length, name, total);
                 await tick();
+
+                // Consulta o índice: se o arquivo (inalterado) não tem o jogador/comando, nem abre
+                let file;
                 try {
-                    const file = await item.getFile();
+                    file = await item.getFile();
+                    const rec = await idxGet(idxKey(name));
+                    if (isFresh(rec, file) && !indexMayMatch(rec, commandQuery, playerQuery)) { skipped++; continue; }
+                } catch (_) {
+                    failed++;
+                    continue;
+                }
+                opened++;
+
+                // Ocorrências deste arquivo (ordem cronológica). Se não precisamos de todas,
+                // mantém só as últimas `need`, descartando o excedente de tempos em tempos.
+                const need = onBatch ? Infinity : Math.max(0, keep - shown.length);
+                let local = [];
+
+                try {
                     await readLines(file, line => {
                         if (!line.includes('issued server command')) return;
                         const m = COMMAND_LINE_RE.exec(line);
                         if (!m) return;
+
+                        const player = m[2];
                         const command = m[3].trim();
-                        order++;
-                        entries.push({
-                            order, date, time: m[1], player: m[2], command,
-                            pn: normalizePlayer(m[2]),
-                            cn: stripSlashes(normalizeText(command)),
-                            cname: commandName(command),
-                        });
-                    });
-                } catch (_) {
+                        if (state.ignoredPlayers.has(normalizePlayer(player))) return;
+                        if (state.ignoredCommands.has(commandName(command))) return;
+                        if (commandQuery && !commandMatches(stripSlashes(normalizeText(command)), commandQuery)) return;
+                        if (playerQuery && !normalizePlayer(player).includes(playerQuery)) return;
+
+                        total++;
+                        players.add(player);
+                        if (need > 0) {
+                            local.push({ date, time: m[1], player, command });
+                            if (need !== Infinity && local.length > need * 2) local = local.slice(-need);
+                        }
+                    }, signal);
+                } catch (err) {
+                    if (err instanceof Cancelled) throw err;
                     failed++;
                 }
+
+                if (local.length) {
+                    local.reverse(); // mais recentes primeiro
+                    if (onBatch) {
+                        await onBatch(local);
+                    } else {
+                        const room = keep - shown.length;
+                        for (let k = 0; k < Math.min(room, local.length); k++) shown.push(local[k]);
+                    }
+                }
+                local = null;
             }
-            return { entries, failed, total: files.length };
+            return { shown, total, uniquePlayers: players.size, failed, skipped, opened, partial, considered: files.length };
         }
 
         // -------------------------------------------------------------------
@@ -290,8 +497,10 @@
         // -------------------------------------------------------------------
         function setFolder(source) {
             state.source = source;
+            state.files = [];
+            state.searched = false;
             folderField.value = source.name;
-            setStatus('Pasta selecionada. Clique em "Carregar / atualizar logs".');
+            setStatus('Pasta selecionada. Clique em "Atualizar índice".');
         }
 
         async function pickFolder() {
@@ -330,101 +539,162 @@
         }
 
         // -------------------------------------------------------------------
-        // Carregamento
+        // Estado da interface
         // -------------------------------------------------------------------
         function setStatus(text) { statusText.textContent = text; }
 
         function setBusy(busy) {
             spinner.classList.toggle('hidden', !busy);
+            cancelBtn.classList.toggle('hidden', !busy);
             scanBtn.disabled = busy;
+            clearIndexBtn.disabled = busy;
             searchBtn.disabled = busy;
             pickFolderBtn.disabled = busy;
+            if (busy) exportBtn.disabled = true;
         }
 
+        function beginOp() {
+            state.abort = new AbortController();
+            setBusy(true);
+            return state.abort.signal;
+        }
+
+        function endOp() {
+            state.abort = null;
+            setBusy(false);
+        }
+
+        // "Atualizar índice": lista os arquivos e indexa apenas os novos ou alterados.
+        // Arquivos já indexados e inalterados não são lidos de novo.
         async function doScan() {
             if (!state.source) {
                 setStatus('Selecione uma pasta de logs válida primeiro.');
                 return;
             }
-            setBusy(true);
-            setStatus('Lendo arquivos de log...');
+            const signal = beginOp();
+            setStatus('Listando arquivos de log...');
+            const t0 = performance.now();
             try {
                 const items = await getItems();
-                const { entries, failed } = await scanLogs(items, (i, total, name) => {
-                    setStatus(`Lendo ${name} (${i + 1}/${total})...`);
-                });
-                state.entries = entries;
-                let msg = `${entries.length.toLocaleString('pt-BR')} comando(s) carregado(s) de "${state.source.name}".`;
-                if (failed) {
-                    msg += `\n${failed} arquivo(s) não puderam ser lidos.`;
-                    if (state.source.type === 'files') msg += ' Selecione a pasta novamente para atualizar.';
+                state.files = await listLogFiles(items);
+                if (!state.files.length) {
+                    setStatus(`Nenhum arquivo .log / .log.gz encontrado em "${state.source.name}".`);
+                    return;
                 }
+
+                let indexed = 0, upToDate = 0, failed = 0;
+                for (let i = 0; i < state.files.length; i++) {
+                    if (signal.aborted) throw new Cancelled();
+                    const { item, name } = state.files[i];
+                    setStatus(`Indexando ${name} (${i + 1}/${state.files.length}) — ${fmt(indexed)} novo(s), ${fmt(upToDate)} já atualizado(s)...`);
+                    await tick();
+                    try {
+                        const file = await item.getFile();
+                        if (isFresh(await idxGet(idxKey(name)), file)) { upToDate++; continue; }
+                        await idxPut(idxKey(name), await buildIndexRecord(file, signal));
+                        indexed++;
+                    } catch (err) {
+                        if (err instanceof Cancelled) throw err;
+                        failed++;
+                    }
+                }
+
+                const secs = ((performance.now() - t0) / 1000).toFixed(1);
+                let msg = `${fmt(state.files.length)} arquivo(s) em "${state.source.name}": ${fmt(indexed)} indexado(s) agora, ${fmt(upToDate)} já estavam atualizados (${secs} s).`;
+                if (failed) msg += `\n${failed} arquivo(s) não puderam ser lidos.`;
                 setStatus(msg);
             } catch (err) {
-                setStatus('Erro ao ler os logs: ' + err.message);
+                setStatus(err instanceof Cancelled
+                    ? 'Indexação cancelada. Os arquivos já indexados foram salvos; clique de novo para continuar.'
+                    : 'Erro ao indexar os logs: ' + err.message);
             } finally {
-                setBusy(false);
-                applyFilter();
+                endOp();
+                resetResults();
             }
         }
 
-        // -------------------------------------------------------------------
-        // Filtros e resultados
-        // -------------------------------------------------------------------
-        function getCurrentMatches() {
-            const commandQuery = stripSlashes(normalizeText(commandField.value || ''));
-            const playerQuery = normalizePlayer(playerField.value || '');
-            if (!commandQuery && !playerQuery) return null;
-
-            const matched = state.entries.filter(e =>
-                (!commandQuery || commandMatches(e.cn, commandQuery)) &&
-                (!playerQuery || e.pn.includes(playerQuery)) &&
-                !state.ignoredPlayers.has(e.pn) &&
-                !state.ignoredCommands.has(e.cname)
-            );
-            matched.reverse(); // mais recentes primeiro
-            return matched;
+        async function clearIndex() {
+            if (!state.source) { setStatus('Selecione uma pasta primeiro.'); return; }
+            await idxClearFolder();
+            setStatus(`Índice de "${state.source.name}" apagado. Clique em "Atualizar índice" para recriar.`);
         }
 
+        // -------------------------------------------------------------------
+        // Resultados
+        // -------------------------------------------------------------------
         function messageRow(text, cls) {
             resultsBody.innerHTML = `<tr><td colspan="3" class="py-10 text-center italic ${cls}">${esc(text)}</td></tr>`;
         }
 
-        function applyFilter() {
-            const matched = getCurrentMatches();
+        function resetResults() {
+            resultCount.textContent = '0 ocorrências';
+            exportBtn.disabled = true;
+            messageRow('Digite um comando e/ou um nome de jogador e clique em Buscar.', 'text-gray-500');
+        }
 
-            if (matched === null) {
-                resultCount.textContent = '0 ocorrências';
-                exportBtn.disabled = true;
-                messageRow('Digite um comando e/ou um nome de jogador para buscar.', 'text-gray-500');
-                return;
-            }
-
-            if (state.entries.length === 0) {
-                resultCount.textContent = '0 ocorrências';
-                exportBtn.disabled = true;
-                messageRow('Carregue os logs antes de buscar.', 'text-amber-400 font-semibold');
-                return;
-            }
-
-            const total = matched.length;
-            const uniquePlayers = new Set(matched.map(e => e.player)).size;
-            let label = `${total.toLocaleString('pt-BR')} ocorrência(s) — ${uniquePlayers.toLocaleString('pt-BR')} jogador(es) único(s)`;
-            if (total > MAX_RESULTS_SHOWN) label += ` (mostrando as ${MAX_RESULTS_SHOWN.toLocaleString('pt-BR')} mais recentes)`;
-            resultCount.textContent = label;
-            exportBtn.disabled = total === 0;
-
-            if (total === 0) {
-                messageRow('Nenhuma ocorrência encontrada com estes filtros.', 'text-rose-400 font-semibold');
-                return;
-            }
-
-            resultsBody.innerHTML = matched.slice(0, MAX_RESULTS_SHOWN).map(e => `
+        function renderRows(rows) {
+            // 3000 linhas no máximo: monta em blocos para não criar uma string enorme
+            const parts = [];
+            for (let i = 0; i < rows.length; i += 500) {
+                parts.push(rows.slice(i, i + 500).map(e => `
                 <tr class="transition-colors duration-150">
                     <td class="py-2.5 px-4 font-mono text-xs text-gray-500 whitespace-nowrap">${e.date} ${e.time}</td>
                     <td class="py-2.5 px-4 font-semibold text-gray-200 whitespace-nowrap">${esc(e.player)}</td>
                     <td class="py-2.5 px-4 font-mono text-indigo-300 break-all">${esc(e.command)}</td>
-                </tr>`).join('');
+                </tr>`).join(''));
+            }
+            resultsBody.innerHTML = parts.join('');
+        }
+
+        async function applyFilter() {
+            if (state.abort) return; // já há uma operação em andamento
+
+            const filters = readFilters();
+            if (!filters.commandQuery && !filters.playerQuery) {
+                state.searched = false;
+                resetResults();
+                messageRow('Digite um comando e/ou um nome de jogador para buscar.', 'text-gray-500');
+                return;
+            }
+            if (!state.files.length) {
+                resetResults();
+                messageRow(state.source ? 'Clique em "Atualizar índice" antes de buscar.' : 'Selecione a pasta de logs antes de buscar.', 'text-amber-400 font-semibold');
+                return;
+            }
+
+            const signal = beginOp();
+            state.searched = true;
+            const t0 = performance.now();
+            try {
+                const r = await searchLogs(filters, {
+                    keep: MAX_RESULTS_SHOWN,
+                    signal,
+                    onProgress: (i, n, name, found) => setStatus(`Buscando em ${name} (${i + 1}/${n}) — ${fmt(found)} encontrada(s)...`),
+                });
+
+                const atLeast = r.partial ? 'pelo menos ' : '';
+                let label = `${atLeast}${fmt(r.total)} ocorrência(s) — ${atLeast}${fmt(r.uniquePlayers)} jogador(es) único(s)`;
+                if (r.total > MAX_RESULTS_SHOWN) label += ` (mostrando as ${fmt(MAX_RESULTS_SHOWN)} mais recentes)`;
+                resultCount.textContent = label;
+
+                if (r.total === 0) messageRow('Nenhuma ocorrência encontrada com estes filtros.', 'text-rose-400 font-semibold');
+                else renderRows(r.shown);
+
+                let msg = `Busca concluída em ${((performance.now() - t0) / 1000).toFixed(1)} s — ${fmt(r.opened)} arquivo(s) lido(s), ${fmt(r.skipped)} pulado(s) pelo índice` +
+                          (r.partial ? ' (busca rápida: parou ao completar as mais recentes).' : '.');
+                if (r.failed) msg += `\n${r.failed} arquivo(s) não puderam ser lidos.` + (state.source.type === 'files' ? ' Selecione a pasta novamente.' : '');
+                setStatus(msg);
+                exportBtn.disabled = r.total === 0;
+            } catch (err) {
+                if (err instanceof Cancelled) setStatus('Busca cancelada.');
+                else setStatus('Erro na busca: ' + err.message);
+            } finally {
+                state.abort = null;
+                setBusy(false);
+                // Após erro/cancelamento o botão de exportar só vale se há resultados na tela
+                if (resultsBody.querySelector('td[colspan]')) exportBtn.disabled = true;
+                else exportBtn.disabled = false;
+            }
         }
 
         // -------------------------------------------------------------------
@@ -448,13 +718,18 @@
                 .map(n => chipHtml('/' + n, 'command', n)).join('');
         }
 
+        // Mudou a lista de ignorados: refaz a busca atual (se já houve uma)
+        function ignoredChanged() {
+            if (state.searched) applyFilter();
+        }
+
         function addIgnoredPlayer() {
             const name = normalizePlayer(ignorePlayerField.value || '');
             if (!name) return;
             state.ignoredPlayers.add(name);
             ignorePlayerField.value = '';
             refreshIgnoredPlayers();
-            applyFilter();
+            ignoredChanged();
         }
 
         function addIgnoredCommand() {
@@ -463,7 +738,7 @@
             state.ignoredCommands.add(name);
             ignoreCommandField.value = '';
             refreshIgnoredCommands();
-            applyFilter();
+            ignoredChanged();
         }
 
         document.addEventListener('click', e => {
@@ -476,75 +751,102 @@
                 state.ignoredCommands.delete(btn.dataset.value);
                 refreshIgnoredCommands();
             }
-            applyFilter();
+            ignoredChanged();
         });
 
         // -------------------------------------------------------------------
-        // Exportação
+        // Exportação — grava direto no arquivo, em blocos, sem acumular na memória
         // -------------------------------------------------------------------
         async function exportResults() {
-            const matched = getCurrentMatches();
-            if (!matched || !matched.length) return;
+            if (state.abort) return;
+            const filters = readFilters();
+            if ((!filters.commandQuery && !filters.playerQuery) || !state.files.length) return;
 
-            const lines = [
-                `Resultados exportados em: ${localDateTimeStr(new Date())}`,
-                '-'.repeat(60),
-                ...matched.map(e => `[${e.date} ${e.time}] ${e.player}: ${e.command}`),
-            ];
-            const text = lines.join('\n') + '\n';
             const fileName = 'comandos_filtrados.txt';
+            const header = `Resultados exportados em: ${localDateTimeStr(new Date())}\n${'-'.repeat(60)}\n`;
+            const toText = rows => rows.map(e => `[${e.date} ${e.time}] ${e.player}: ${e.command}`).join('\n') + '\n';
 
-            try {
-                if (window.showSaveFilePicker) {
-                    try {
-                        const h = await window.showSaveFilePicker({
-                            suggestedName: fileName,
-                            types: [{ description: 'Arquivo de texto', accept: { 'text/plain': ['.txt'] } }],
-                        });
-                        const w = await h.createWritable();
-                        await w.write(text);
-                        await w.close();
-                        setStatus(`Exportado com sucesso para:\n${h.name}`);
-                        return;
-                    } catch (err) {
-                        if (err && err.name === 'AbortError') return;
-                        // outro erro: usa o download comum
-                    }
+            // O seletor de arquivo precisa ser aberto antes de começar a ler os logs (gesto do usuário)
+            let writable = null;
+            let savedName = fileName;
+            if (window.showSaveFilePicker) {
+                try {
+                    const h = await window.showSaveFilePicker({
+                        suggestedName: fileName,
+                        types: [{ description: 'Arquivo de texto', accept: { 'text/plain': ['.txt'] } }],
+                    });
+                    writable = await h.createWritable();
+                    savedName = h.name;
+                } catch (err) {
+                    if (err && err.name === 'AbortError') return;
+                    writable = null; // outro erro: usa o download comum
                 }
-                const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = fileName;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                setTimeout(() => URL.revokeObjectURL(url), 1000);
-                setStatus(`Exportado com sucesso: ${fileName}`);
+            }
+
+            const blobParts = []; // fallback: Blobs ficam em disco/gerenciados pelo navegador, não como strings
+            const signal = beginOp();
+            let count = 0;
+            try {
+                if (writable) await writable.write(header); else blobParts.push(new Blob([header]));
+
+                await searchLogs(filters, {
+                    signal,
+                    onProgress: (i, n, name) => setStatus(`Exportando: lendo ${name} (${i + 1}/${n}) — ${fmt(count)} linha(s) gravada(s)...`),
+                    onBatch: async rows => {
+                        for (let i = 0; i < rows.length; i += EXPORT_BATCH) {
+                            const part = rows.slice(i, i + EXPORT_BATCH);
+                            count += part.length;
+                            const text = toText(part);
+                            if (writable) await writable.write(text); else blobParts.push(new Blob([text]));
+                        }
+                    },
+                });
+
+                if (writable) {
+                    await writable.close();
+                    writable = null;
+                    setStatus(`Exportado com sucesso (${fmt(count)} linha(s)) para:\n${savedName}`);
+                } else {
+                    const url = URL.createObjectURL(new Blob(blobParts, { type: 'text/plain;charset=utf-8' }));
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = fileName;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    setTimeout(() => URL.revokeObjectURL(url), 60000);
+                    setStatus(`Exportado com sucesso (${fmt(count)} linha(s)): ${fileName}`);
+                }
             } catch (err) {
-                setStatus('Erro ao exportar: ' + err.message);
+                if (writable) { try { await writable.abort(); } catch (_) { /* ignora */ } }
+                setStatus(err instanceof Cancelled ? 'Exportação cancelada.' : 'Erro ao exportar: ' + err.message);
+            } finally {
+                state.abort = null;
+                setBusy(false);
+                exportBtn.disabled = !!resultsBody.querySelector('td[colspan]');
             }
         }
 
         // -------------------------------------------------------------------
         // Eventos
         // -------------------------------------------------------------------
-        let debounceTimer;
-        const debouncedFilter = () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(applyFilter, 300); };
-
+        // A busca agora só roda em "Buscar" / Enter (cada busca relê os logs).
         pickFolderBtn.addEventListener('click', pickFolder);
         scanBtn.addEventListener('click', doScan);
+        clearIndexBtn.addEventListener('click', clearIndex);
         searchBtn.addEventListener('click', applyFilter);
         exportBtn.addEventListener('click', exportResults);
+        cancelBtn.addEventListener('click', () => { if (state.abort) state.abort.abort(); });
 
         [commandField, playerField].forEach(input => {
-            input.addEventListener('input', debouncedFilter);
-            input.addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(debounceTimer); applyFilter(); } });
+            input.addEventListener('keydown', e => { if (e.key === 'Enter') applyFilter(); });
         });
 
         clearBtn.addEventListener('click', () => {
             commandField.value = '';
             playerField.value = '';
-            applyFilter();
+            state.searched = false;
+            resetResults();
         });
 
         addIgnorePlayerBtn.addEventListener('click', addIgnoredPlayer);
