@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversor de Display (Padrão 1 para Padrão 2)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #111827; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4B5563; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-300 min-h-screen p-4 md:p-6 font-sans">
+
+    <div class="max-w-screen-2xl mx-auto space-y-6">
+
+        <!-- Cabeçalho -->
+        <header class="border-b border-gray-800 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold text-white flex items-center gap-2">
+                    <span class="text-indigo-500 text-3xl">🔄</span>
+                    Conversor de Display (Padrão 1 → Padrão 2)
+                </h1>
+                <p class="text-gray-500 mt-1 text-sm">
+                    Converte o JSON de visualização de itens (Display) em script de inicialização Molang.
+                </p>
+            </div>
+            <div class="flex items-center gap-2">
+                <button id="btnExample" class="bg-indigo-600 hover:bg-indigo-500 text-white py-2 px-4 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow">
+                    <span>⚡</span> Carregar Exemplo
+                </button>
+                <button id="btnClear" class="bg-gray-800 hover:bg-gray-700 text-white py-2 px-3 rounded-lg text-xs font-medium transition border border-gray-700">
+                    Limpar
+                </button>
+            </div>
+        </header>
+
+        <!-- Barra de Opções -->
+        <div class="bg-gray-900 p-4 rounded-xl border border-gray-800 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex flex-wrap items-center gap-6">
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Formato de Saída</label>
+                    <select id="selectFormat" class="bg-gray-950 border border-gray-700 rounded-lg py-1.5 px-3 text-xs text-white outline-none focus:ring-2 focus:ring-indigo-500 transition cursor-pointer">
+                        <option value="json">"initialize": [ ... ] (JSON)</option>
+                        <option value="plain">Molang Puro (Apenas os comandos)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Precisão Numérica</label>
+                    <select id="selectPrecision" class="bg-gray-950 border border-gray-700 rounded-lg py-1.5 px-3 text-xs text-white outline-none focus:ring-2 focus:ring-indigo-500 transition cursor-pointer">
+                        <option value="min2">Mínimo 2 casas (ex: 52.00, 0.43398)</option>
+                        <option value="fixed2">Fixar em 2 casas (ex: 52.00, 0.43)</option>
+                        <option value="exact">Exata / Original (ex: 52, 0.43398)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="statusBadge" class="text-xs px-3 py-1 rounded-full border font-mono transition bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
+                Aguardando entrada...
+            </div>
+        </div>
+
+        <!-- Área Principal de Edição -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            <!-- Padrão 1 (Entrada) -->
+            <div class="bg-gray-900 rounded-xl border border-gray-800 flex flex-col overflow-hidden shadow-xl" style="min-height: 520px;">
+                <div class="bg-gray-800 px-4 py-3 border-b border-gray-700 flex justify-between items-center">
+                    <h2 class="text-sm font-semibold text-white flex items-center gap-2">
+                        <span class="text-xs bg-gray-700 text-gray-300 px-2 py-0.5 rounded font-mono">Padrão 1</span>
+                        Entrada JSON
+                    </h2>
+                    <span class="text-xs text-gray-400 italic">Insira ou cole o bloco "display"</span>
+                </div>
+                <div class="p-4 flex-1 flex flex-col">
+                    <textarea id="jsonInput" spellcheck="false" placeholder='Cole aqui seu JSON do Padrão 1. Exemplo:
+{
+  "display": {
+    "thirdperson_righthand": {
+      "rotation": [-22.5, -74.5, 66.75],
+      "translation": [-2, -0.5, -4],
+      "scale": [0.43398, 0.52383, 0.43398]
+    },
+    ...
+  }
+}' class="w-full flex-1 bg-gray-950 border border-gray-800 rounded-lg p-3 font-mono text-xs text-gray-200 outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none transition leading-relaxed"></textarea>
+                </div>
+            </div>
+
+            <!-- Padrão 2 (Saída) -->
+            <div class="bg-gray-900 rounded-xl border border-gray-800 flex flex-col overflow-hidden shadow-xl" style="min-height: 520px;">
+                <div class="bg-gray-800 px-4 py-3 border-b border-gray-700 flex justify-between items-center">
+                    <h2 class="text-sm font-semibold text-white flex items-center gap-2">
+                        <span class="text-xs bg-indigo-600 text-white px-2 py-0.5 rounded font-mono">Padrão 2</span>
+                        Resultado
+                    </h2>
+                    <button id="btnCopy" class="bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 px-3 rounded-lg text-xs font-semibold transition flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                        </svg>
+                        <span id="btnCopyText">Copiar Resultado</span>
+                    </button>
+                </div>
+                <div class="p-4 flex-1 flex flex-col">
+                    <textarea id="outputResult" readonly spellcheck="false" placeholder="O resultado convertido aparecerá aqui..." class="w-full flex-1 bg-gray-950 border border-gray-800 rounded-lg p-3 font-mono text-xs text-indigo-300 outline-none resize-none cursor-text leading-relaxed"></textarea>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        const EXAMPLE_PATTERN_1 = `{
+	"display": {
+		"thirdperson_righthand": {
+			"rotation": [-22.5, -74.5, 66.75],
+			"translation": [-2, -0.5, -4],
+			"scale": [0.43398, 0.52383, 0.43398]
+		},
+		"thirdperson_lefthand": {
+			"rotation": [-22.5, -74.5, 66.75],
+			"translation": [-2, -0.5, -4],
+			"scale": [0.43398, 0.52383, 0.43398]
+		},
+		"firstperson_righthand": {
+			"rotation": [81.06, 14.8, -2.08],
+			"translation": [-0.25, 4, 4.75],
+			"scale": [0.4, 0.4, 0.4]
+		},
+		"firstperson_lefthand": {
+			"rotation": [81.06, 14.8, -2.08],
+			"translation": [-0.25, 4, 4.75],
+			"scale": [0.4, 0.4, 0.4]
+		},
+		"ground": {
+			"translation": [0, 4.5, 0],
+			"scale": [0.71484, 0.71484, 0.71484]
+		},
+		"gui": {
+			"rotation": [90, 0, 0],
+			"translation": [0.25, 0.5, 0],
+			"scale": [0.83789, 0.83789, 0.83789]
+		},
+		"head": {
+			"translation": [0, -32.5, -1],
+			"scale": [1.43359, 1.43359, 1.43359]
+		},
+		"fixed": {
+			"rotation": [90, 0, 0],
+			"translation": [0, 1, 12.75],
+			"scale": [1.75391, 1.75391, 1.75391]
+		}
+	}
+}`;
+
+        // Elementos DOM
+        const jsonInput = document.getElementById('jsonInput');
+        const outputResult = document.getElementById('outputResult');
+        const selectFormat = document.getElementById('selectFormat');
+        const selectPrecision = document.getElementById('selectPrecision');
+        const statusBadge = document.getElementById('statusBadge');
+        const btnExample = document.getElementById('btnExample');
+        const btnClear = document.getElementById('btnClear');
+        const btnCopy = document.getElementById('btnCopy');
+        const btnCopyText = document.getElementById('btnCopyText');
+
+        // Formatação de números
+        function formatNumber(num, mode) {
+            if (typeof num !== 'number' || isNaN(num)) num = 0;
+            if (mode === 'exact') return num.toString();
+            if (mode === 'fixed2') return num.toFixed(2);
+
+            // Mode 'min2' (padrão): pelo menos 2 casas decimais (ex: 52.00, 0.50, 0.43398)
+            const str = num.toString();
+            if (!str.includes('.')) {
+                return num.toFixed(2);
+            }
+            const decimals = str.split('.')[1];
+            if (decimals.length === 1) {
+                return num.toFixed(2);
+            }
+            return str;
+        }
+
+        // Tentar limpar comentários e vírgulas sobressalentes para parsing relaxado
+        function parseRelaxedJSON(text) {
+            let clean = text.trim();
+            if (!clean) return null;
+
+            // Remove comentários // e /* */
+            clean = clean.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1');
+            // Remove vírgulas antes de fechamento de chaves/colchetes
+            clean = clean.replace(/,(\s*[\}\]])/g, '$1');
+
+            try {
+                return JSON.parse(clean);
+            } catch (e) {
+                // Tenta envolver em chaves se o usuário colou um bloco de propriedades diretamente
+                if (!clean.startsWith('{')) {
+                    try {
+                        return JSON.parse('{' + clean + '}');
+                    } catch (_) {}
+                }
+                throw e;
+            }
+        }
+
+        // Extrai os valores (rot, trans, scale) com fallbacks
+        function extractDisplayValues(entry) {
+            const rot = Array.isArray(entry?.rotation) ? entry.rotation : [0, 0, 0];
+            const trans = Array.isArray(entry?.translation) ? entry.translation : [0, 0, 0];
+
+            let scaleVal = 1;
+            if (Array.isArray(entry?.scale) && entry.scale.length > 0) {
+                scaleVal = entry.scale[0];
+            } else if (typeof entry?.scale === 'number') {
+                scaleVal = entry.scale;
+            }
+
+            return {
+                r: [rot[0] ?? 0, rot[1] ?? 0, rot[2] ?? 0],
+                p: [trans[0] ?? 0, trans[1] ?? 0, trans[2] ?? 0],
+                s: scaleVal
+            };
+        }
+
+        // Verifica igualdade profunda entre dois objetos extraídos
+        function isDeepEqual(vals1, vals2) {
+            return vals1.r[0] === vals2.r[0] &&
+                   vals1.r[1] === vals2.r[1] &&
+                   vals1.r[2] === vals2.r[2] &&
+                   vals1.p[0] === vals2.p[0] &&
+                   vals1.p[1] === vals2.p[1] &&
+                   vals1.p[2] === vals2.p[2] &&
+                   vals1.s === vals2.s;
+        }
+
+        // Executa a conversão do Padrão 1 para o Padrão 2
+        function convert() {
+            const rawText = jsonInput.value.trim();
+            if (!rawText) {
+                outputResult.value = '';
+                statusBadge.textContent = 'Aguardando entrada...';
+                statusBadge.className = 'text-xs px-3 py-1 rounded-full border font-mono transition bg-gray-800 text-gray-400 border-gray-700';
+                return;
+            }
+
+            let parsed;
+            try {
+                parsed = parseRelaxedJSON(rawText);
+            } catch (err) {
+                outputResult.value = '';
+                statusBadge.textContent = 'JSON Inválido';
+                statusBadge.className = 'text-xs px-3 py-1 rounded-full border font-mono transition bg-rose-500/10 text-rose-400 border-rose-500/30';
+                return;
+            }
+
+            statusBadge.textContent = 'JSON Válido';
+            statusBadge.className = 'text-xs px-3 py-1 rounded-full border font-mono transition bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+
+            // Pega o objeto 'display' se existir ou assume o objeto raiz
+            const display = parsed.display || parsed;
+
+            const tp_m = extractDisplayValues(display.thirdperson_righthand);
+            // Se mão esquerda não for fornecida, assume igual à direita
+            const tp_o = display.thirdperson_lefthand ? extractDisplayValues(display.thirdperson_lefthand) : tp_m;
+
+            const fp_m = extractDisplayValues(display.firstperson_righthand);
+            // Se mão esquerda não for fornecida, assume igual à direita
+            const fp_o = display.firstperson_lefthand ? extractDisplayValues(display.firstperson_lefthand) : fp_m;
+
+            const tp_h = extractDisplayValues(display.head);
+
+            const tp_same = display.thirdperson_lefthand ? isDeepEqual(tp_m, tp_o) : true;
+            const fp_same = display.firstperson_lefthand ? isDeepEqual(fp_m, fp_o) : true;
+
+            const prec = selectPrecision.value;
+
+            // Gera as declarações de variáveis Molang
+            const groupSame = [
+                `v.kz_tp_same = ${tp_same};`,
+                `v.kz_fp_same = ${fp_same};`
+            ];
+
+            const groupTpM = [
+                `v.kz_tp_m_r_x = ${formatNumber(tp_m.r[0], prec)};`,
+                `v.kz_tp_m_r_y = ${formatNumber(tp_m.r[1], prec)};`,
+                `v.kz_tp_m_r_z = ${formatNumber(tp_m.r[2], prec)};`,
+                `v.kz_tp_m_p_x = ${formatNumber(tp_m.p[0], prec)};`,
+                `v.kz_tp_m_p_y = ${formatNumber(tp_m.p[1], prec)};`,
+                `v.kz_tp_m_p_z = ${formatNumber(tp_m.p[2], prec)};`,
+                `v.kz_tp_m_s = ${formatNumber(tp_m.s, prec)};`
+            ];
+
+            const groupTpO = [
+                `v.kz_tp_o_r_x = ${formatNumber(tp_o.r[0], prec)};`,
+                `v.kz_tp_o_r_y = ${formatNumber(tp_o.r[1], prec)};`,
+                `v.kz_tp_o_r_z = ${formatNumber(tp_o.r[2], prec)};`,
+                `v.kz_tp_o_p_x = ${formatNumber(tp_o.p[0], prec)};`,
+                `v.kz_tp_o_p_y = ${formatNumber(tp_o.p[1], prec)};`,
+                `v.kz_tp_o_p_z = ${formatNumber(tp_o.p[2], prec)};`,
+                `v.kz_tp_o_s = ${formatNumber(tp_o.s, prec)};`
+            ];
+
+            const groupFpM = [
+                `v.kz_fp_m_r_x = ${formatNumber(fp_m.r[0], prec)};`,
+                `v.kz_fp_m_r_y = ${formatNumber(fp_m.r[1], prec)};`,
+                `v.kz_fp_m_r_z = ${formatNumber(fp_m.r[2], prec)};`,
+                `v.kz_fp_m_p_x = ${formatNumber(fp_m.p[0], prec)};`,
+                `v.kz_fp_m_p_y = ${formatNumber(fp_m.p[1], prec)};`,
+                `v.kz_fp_m_p_z = ${formatNumber(fp_m.p[2], prec)};`,
+                `v.kz_fp_m_s = ${formatNumber(fp_m.s, prec)};`
+            ];
+
+            const groupFpO = [
+                `v.kz_fp_o_r_x = ${formatNumber(fp_o.r[0], prec)};`,
+                `v.kz_fp_o_r_y = ${formatNumber(fp_o.r[1], prec)};`,
+                `v.kz_fp_o_r_z = ${formatNumber(fp_o.r[2], prec)};`,
+                `v.kz_fp_o_p_x = ${formatNumber(fp_o.p[0], prec)};`,
+                `v.kz_fp_o_p_y = ${formatNumber(fp_o.p[1], prec)};`,
+                `v.kz_fp_o_p_z = ${formatNumber(fp_o.p[2], prec)};`,
+                `v.kz_fp_o_s = ${formatNumber(fp_o.s, prec)};`
+            ];
+
+            const groupTpH = [
+                `v.kz_tp_h_r_x = ${formatNumber(tp_h.r[0], prec)};`,
+                `v.kz_tp_h_r_y = ${formatNumber(tp_h.r[1], prec)};`,
+                `v.kz_tp_h_r_z = ${formatNumber(tp_h.r[2], prec)};`,
+                `v.kz_tp_h_p_x = ${formatNumber(tp_h.p[0], prec)};`,
+                `v.kz_tp_h_p_y = ${formatNumber(tp_h.p[1], prec)};`,
+                `v.kz_tp_h_p_z = ${formatNumber(tp_h.p[2], prec)};`,
+                `v.kz_tp_h_s = ${formatNumber(tp_h.s, prec)};`
+            ];
+
+            const allGroups = [groupSame, groupTpM, groupTpO, groupFpM, groupFpO, groupTpH];
+
+            const outFormat = selectFormat.value;
+
+            if (outFormat === 'json') {
+                const lines = [];
+                lines.push('                "initialize": [');
+
+                const totalLines = allGroups.reduce((acc, g) => acc + g.length, 0);
+                let lineCount = 0;
+
+                allGroups.forEach((group, gIndex) => {
+                    group.forEach((item) => {
+                        lineCount++;
+                        const isLast = lineCount === totalLines;
+                        lines.push(`                    "${item}"${isLast ? '' : ','}`);
+                    });
+                    if (gIndex < allGroups.length - 1) {
+                        lines.push('');
+                    }
+                });
+
+                lines.push('                ]');
+                outputResult.value = lines.join('\n');
+            } else {
+                // Formato Molang puro
+                const plainLines = allGroups.map(g => g.join('\n')).join('\n\n');
+                outputResult.value = plainLines;
+            }
+        }
+
+        // Listeners de entrada
+        jsonInput.addEventListener('input', convert);
+        selectFormat.addEventListener('change', convert);
+        selectPrecision.addEventListener('change', convert);
+
+        // Botão Carregar Exemplo
+        btnExample.addEventListener('click', () => {
+            jsonInput.value = EXAMPLE_PATTERN_1;
+            convert();
+        });
+
+        // Botão Limpar
+        btnClear.addEventListener('click', () => {
+            jsonInput.value = '';
+            convert();
+        });
+
+        // Botão Copiar
+        btnCopy.addEventListener('click', () => {
+            const text = outputResult.value;
+            if (!text) return;
+
+            navigator.clipboard.writeText(text).then(() => {
+                btnCopyText.textContent = 'Copiado!';
+                btnCopy.classList.remove('bg-indigo-600', 'hover:bg-indigo-500');
+                btnCopy.classList.add('bg-emerald-600', 'hover:bg-emerald-500');
+
+                setTimeout(() => {
+                    btnCopyText.textContent = 'Copiar Resultado';
+                    btnCopy.classList.remove('bg-emerald-600', 'hover:bg-emerald-500');
+                    btnCopy.classList.add('bg-indigo-600', 'hover:bg-indigo-500');
+                }, 2000);
+            }).catch(err => {
+                console.error('Erro ao copiar: ', err);
+            });
+        });
+    </script>
+</body>
+</html>

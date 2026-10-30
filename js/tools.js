@@ -36,6 +36,14 @@ window.TOOLS = [
         icon: '💰',
         tags: ['economia', 'logs', 'transações', 'saldo'],
     },
+    {
+        id: 'conversor-display',
+        name: 'Conversor de Display',
+        description: 'Converta o JSON de visualização de itens (Display) em script de inicialização Molang (Padrão 1 para Padrão 2).',
+        file: 'conversor-display.html',
+        icon: '🔄',
+        tags: ['display', 'molang', 'conversor', 'minecraft', 'json', 'modelo'],
+    },
 
     // --- Exemplo para copiar (remova as barras // para ativar) ---
     // {
